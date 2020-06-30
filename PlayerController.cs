@@ -14,8 +14,8 @@ public class PlayerController : MonoBehaviour
     public GameObject headPoint;        //头部位置点
     public GameObject leftHandPoint;    //左手位置点
     public GameObject rightHandPoint;   //右手位置点
-    public GameObject leftHandAttack;
-    public GameObject rightHandAttack;
+    //public GameObject leftHandAttack;
+    //public GameObject rightHandAttack;
 
     
     
@@ -41,14 +41,30 @@ public class PlayerController : MonoBehaviour
 
     //状态相关参数
     private bool isGround;                  //是否在地面
-    private bool isAttack;
+    private bool isAttack;                  //是否在攻击
+    private bool isInvincible;              //是否处于无敌状态
+    private bool isDodge;                   //是否在翻滚
     private bool forward;                   //左右朝向  true为右，false为左
+
+    //闪避相关参数
+    public float DODGEINVINCIBLETIMER;       //翻滚无敌时间
+    public float DODGETIMER;                 //翻滚时间
+    public float dodgeSpeed;                 //翻滚速度
+    private int dodgeForward;                //翻滚方向，1为向右，-1为向左
+    private float dodgeInvincibleTimer;      
+    private float dodgeTimer;
+
     
+
 
     //攻击相关参数
     public GameObject normalAttackTrigger;  //普通攻击判定范围
     public float triggerTime;               //判定时长
     public float NORMALATTACKCD;            //普通攻击冷却时长
+    public float NORMALATTACKSTATUSTIMER;
+    public int NORMALATTACKSTATUS;
+    private int normalAttackStatus;
+    private float normalAttackStatusTimer;
     private float normalAttackCD=0;         //剩余攻击冷却时长
     private GameObject newAttack;           //创建的普通攻击判定
 
@@ -58,6 +74,8 @@ public class PlayerController : MonoBehaviour
         isHang = false;
         isDown = false;
         isAttack = false;
+        isDodge = false;
+        isInvincible = false;
     }
 
     // Update is called once per frame
@@ -75,6 +93,7 @@ public class PlayerController : MonoBehaviour
         CDUpdate();
         HangCheck();
         GroundCheck();
+        DodgeAction();
         AttackAction();
         HorizontalAction();
         JumpAction();
@@ -83,7 +102,6 @@ public class PlayerController : MonoBehaviour
     
     void CDUpdate()     //冷却更新
     {
-
         if (normalAttackCD > 0)
         {
             normalAttackCD -= Time.deltaTime;
@@ -93,12 +111,70 @@ public class PlayerController : MonoBehaviour
                 normalAttackCD = 0;
             }
         }
+        if (normalAttackStatusTimer > 0)
+        {
+            normalAttackStatusTimer -= Time.deltaTime;
+            if (normalAttackStatusTimer <= 0)
+            {
+                normalAttackStatus = 0;
+            }
+        }
+        if (dodgeInvincibleTimer > 0)
+        {
+            dodgeInvincibleTimer -= Time.deltaTime;
+            if (dodgeInvincibleTimer <= 0)
+            {
+                isInvincible = false;
+            }
+        }
+        if (dodgeTimer > 0)
+        {
+            dodgeTimer -= Time.deltaTime;
+            if (dodgeTimer <= 0)
+            {
+                isDodge = false;
+            }
+        }
     } 
+    void DodgeMove(int dodgeForward)
+    {
+        transform.position += new Vector3(dodgeForward * dodgeSpeed, 0, 0);
+    }
+    void DodgeAction()
+    {
+        if (isHang || isDown || !isGround) return;
+        if (isDodge) DodgeMove(dodgeForward);
+        if (Input.GetButton("Dodge"))
+        {
+            float h = Input.GetAxis("Horizontal");
+            if ( h == 0) { 
+                if (forward == true)
+                {
+                    dodgeForward = -1;
+                }
+                else
+                {
+                    dodgeForward = 1;
+                }
+            }
+            else
+            {
+                dodgeForward = (int)(h / Mathf.Abs(h));
+            }
+            isInvincible = true;
+            isDodge = true;
+            dodgeInvincibleTimer = DODGEINVINCIBLETIMER;
+            Debug.DrawLine(transform.position, leftHandPoint.transform.position, Color.red,DODGEINVINCIBLETIMER);
+            Debug.DrawLine(transform.position, rightHandPoint.transform.position, Color.green, DODGETIMER);
+            dodgeTimer = DODGETIMER;
+            DodgeMove(dodgeForward);
+        }
+    }
     void AttackAction()
     {
-        leftHandAttack.transform.position = leftHandPoint.transform.position;
-        rightHandAttack.transform.position = rightHandPoint.transform.position;
-        if (isHang == true) return;
+        //leftHandAttack.transform.position = leftHandPoint.transform.position;
+        //rightHandAttack.transform.position = rightHandPoint.transform.position;
+        if (isHang == true || isDodge==true || isDown==true) return;
         if (Input.GetButton("Fire1") && normalAttackCD == 0)
         {
             if (isGround)
@@ -113,7 +189,15 @@ public class PlayerController : MonoBehaviour
                 {
                     newAttack = (GameObject)Instantiate(normalAttackTrigger,leftHandPoint.transform.position, Quaternion.identity);
                 }
-                Debug.Log("攻击");
+                Debug.Log(normalAttackStatus);
+                //if (normalAttackStatus==0)
+                //    Debug.DrawLine(transform.position, leftHandPoint.transform.position, Color.blue, NORMALATTACKSTATUSTIMER);
+                //else if (normalAttackStatus==1)
+                //    Debug.DrawLine(transform.position, leftHandPoint.transform.position, Color.red, NORMALATTACKSTATUSTIMER);
+                //else
+                //    Debug.DrawLine(transform.position, leftHandPoint.transform.position, Color.green, NORMALATTACKSTATUSTIMER);
+                normalAttackStatus = (normalAttackStatus + 1) % NORMALATTACKSTATUS;
+                normalAttackStatusTimer = NORMALATTACKSTATUSTIMER;
                 Destroy(newAttack, triggerTime);
                 normalAttackCD = NORMALATTACKCD;
             }
@@ -122,7 +206,7 @@ public class PlayerController : MonoBehaviour
     }
     void HorizontalAction() //左右移动
     {
-        if (isAttack)
+        if (isAttack==true || isDodge==true)
         {
             return;
         }
