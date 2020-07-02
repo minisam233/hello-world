@@ -26,8 +26,8 @@ public class PlayerController : MonoBehaviour
 
     //下落相关参数
     //private bool downPressed;           //下键是否按下
-    private bool isDown;                //是否处于下落模式
-    public float downDistance;          //下落检测距离
+    private bool isDown;                  //是否处于下落模式
+    public float downDistance;            //下落检测距离
     private Collider2D downBlock;         //失效的砖块
 
     //速度相关参数
@@ -36,35 +36,51 @@ public class PlayerController : MonoBehaviour
 
     //悬挂相关参数
     public float hangDistance;              //左右悬挂判定距离
-    private bool isHang,leftHang,rightHang; //是否处于悬挂状态
+   
     private Vector2 hangPosition;
 
-    //状态相关参数
+    //状态相关参数 
+    private bool isHang,leftHang,rightHang; //是否处于悬挂状态
     private bool isGround;                  //是否在地面
     private bool isAttack;                  //是否在攻击
     private bool isInvincible;              //是否处于无敌状态
     private bool isDodge;                   //是否在翻滚
     private bool forward;                   //左右朝向  true为右，false为左
+    private bool isBlock;                   //是否在格挡
+    private bool canBlock;                  //此时能否举盾 
+    private bool isBounce;                  //是否处于弹反
+    private bool canShoot;                  //此时能否射击
 
     //闪避相关参数
     public float DODGEINVINCIBLETIMER;       //翻滚无敌时间
     public float DODGETIMER;                 //翻滚时间
     public float dodgeSpeed;                 //翻滚速度
     private int dodgeForward;                //翻滚方向，1为向右，-1为向左
-    private float dodgeInvincibleTimer;      
-    private float dodgeTimer;
+    private float dodgeInvincibleTimer;      //翻滚无敌时间计时器
+    private float dodgeTimer;                //翻滚时间计时器
 
-    
+    //格挡相关参数
+    public float BOUNCETIMER;                 //弹反时间常数
+    public float BLOCKCD;                     //举盾冷却时间
+    public float blockSpeedDebuff;            //举盾速度减益
+    private float blockCDTimer;               //举盾CD计时器
+    private float bounceTimer;                //弹反时间计时器
 
+    //投掷相关参数
+    public GameObject stone;                     //石头物体
+    public float stoneSpeed;                //石头初速度
+    public float SHOOTCD;                   //射击冷却时间
+    private GameObject newShoot;            //创建的石块
+    private float shootCDTimer;             //射击冷却时间计时器
 
     //攻击相关参数
     public GameObject normalAttackTrigger;  //普通攻击判定范围
     public float triggerTime;               //判定时长
     public float NORMALATTACKCD;            //普通攻击冷却时长
-    public float NORMALATTACKSTATUSTIMER;
-    public int NORMALATTACKSTATUS;
-    private int normalAttackStatus;
-    private float normalAttackStatusTimer;
+    public float NORMALATTACKSTATUSTIMER;   //普通攻击状态重置时长常数
+    public int NORMALATTACKSTATUS;          //普通攻击状态常熟
+    private int normalAttackStatus;         //普通攻击状态
+    private float normalAttackStatusTimer;  //普通攻击状态时长
     private float normalAttackCD=0;         //剩余攻击冷却时长
     private GameObject newAttack;           //创建的普通攻击判定
 
@@ -76,6 +92,8 @@ public class PlayerController : MonoBehaviour
         isAttack = false;
         isDodge = false;
         isInvincible = false;
+        canBlock = true;
+        canShoot = true;
     }
 
     // Update is called once per frame
@@ -95,6 +113,8 @@ public class PlayerController : MonoBehaviour
         GroundCheck();
         DodgeAction();
         AttackAction();
+        ShootAction();
+        BlockAction();
         HorizontalAction();
         JumpAction();
         FallAction();
@@ -135,12 +155,38 @@ public class PlayerController : MonoBehaviour
                 isDodge = false;
             }
         }
+        if (bounceTimer > 0)
+        {
+            bounceTimer -= Time.deltaTime;
+            if (bounceTimer <= 0)
+            {
+                isBounce = false;
+            }
+        }
+        if (blockCDTimer > 0)
+        {
+            blockCDTimer -= Time.deltaTime;
+            if (blockCDTimer <= 0)
+            {
+                canBlock = true;
+            }
+        }
+        if (shootCDTimer > 0)
+        {
+            shootCDTimer -= Time.deltaTime;
+            if (shootCDTimer <= 0)
+            {
+                canShoot = true;
+            }
+        }
     } 
-    void DodgeMove(int dodgeForward)
+
+    void DodgeMove(int dodgeForward) //翻滚移动方向
     {
         transform.position += new Vector3(dodgeForward * dodgeSpeed, 0, 0);
     }
-    void DodgeAction()
+
+    void DodgeAction()              //翻滚判定
     {
         if (isHang || isDown || !isGround) return;
         if (isDodge) DodgeMove(dodgeForward);
@@ -161,21 +207,24 @@ public class PlayerController : MonoBehaviour
             {
                 dodgeForward = (int)(h / Mathf.Abs(h));
             }
+            isBlock = false;
             isInvincible = true;
             isDodge = true;
             dodgeInvincibleTimer = DODGEINVINCIBLETIMER;
-            Debug.DrawLine(transform.position, leftHandPoint.transform.position, Color.red,DODGEINVINCIBLETIMER);
-            Debug.DrawLine(transform.position, rightHandPoint.transform.position, Color.green, DODGETIMER);
+            //Debug.DrawLine(transform.position, leftHandPoint.transform.position, Color.red,DODGEINVINCIBLETIMER);
+            //Debug.DrawLine(transform.position, rightHandPoint.transform.position, Color.green, DODGETIMER);
             dodgeTimer = DODGETIMER;
             DodgeMove(dodgeForward);
         }
     }
-    void AttackAction()
+
+    void AttackAction()           //攻击判定
     {
         //leftHandAttack.transform.position = leftHandPoint.transform.position;
         //rightHandAttack.transform.position = rightHandPoint.transform.position;
         if (isHang == true || isDodge==true || isDown==true) return;
-        if (Input.GetButton("Fire1") && normalAttackCD == 0)
+        //新的攻击
+        if (Input.GetButton("Attack") && normalAttackCD == 0)      
         {
             if (isGround)
             {
@@ -189,13 +238,14 @@ public class PlayerController : MonoBehaviour
                 {
                     newAttack = (GameObject)Instantiate(normalAttackTrigger,leftHandPoint.transform.position, Quaternion.identity);
                 }
-                Debug.Log(normalAttackStatus);
+                //Debug.Log(normalAttackStatus);
                 //if (normalAttackStatus==0)
                 //    Debug.DrawLine(transform.position, leftHandPoint.transform.position, Color.blue, NORMALATTACKSTATUSTIMER);
                 //else if (normalAttackStatus==1)
                 //    Debug.DrawLine(transform.position, leftHandPoint.transform.position, Color.red, NORMALATTACKSTATUSTIMER);
                 //else
                 //    Debug.DrawLine(transform.position, leftHandPoint.transform.position, Color.green, NORMALATTACKSTATUSTIMER);
+                isBlock = false;
                 normalAttackStatus = (normalAttackStatus + 1) % NORMALATTACKSTATUS;
                 normalAttackStatusTimer = NORMALATTACKSTATUSTIMER;
                 Destroy(newAttack, triggerTime);
@@ -204,40 +254,104 @@ public class PlayerController : MonoBehaviour
 
         }
     }
+
+    void ShootAction()         //射击判定
+    {
+        if (isHang == true || isAttack == true || isDodge == true || isDown == true || isGround == false)
+        {
+            return;
+        }
+        bool s = Input.GetButton("Shoot");
+        if (s==true && canShoot == true)
+        {
+            Debug.Log("射击石块");
+            if (forward == true)
+            {
+                Rigidbody2D stoneRb;
+                
+                newShoot = Instantiate(stone, rightHandPoint.transform.position, Quaternion.identity);
+                stoneRb = newShoot.GetComponent<Rigidbody2D>();
+                stoneRb.velocity=Vector2.right*stoneSpeed;
+            }
+            else
+            {
+                Rigidbody2D stoneRb;
+                
+                newShoot = Instantiate(stone, leftHandPoint.transform.position, Quaternion.identity);
+                stoneRb = newShoot.GetComponent<Rigidbody2D>();
+                stoneRb.velocity=Vector2.left*stoneSpeed;
+                
+            }
+            Destroy(newShoot, 5);
+            canShoot = false;
+            shootCDTimer = SHOOTCD;
+        }
+    }
+
+    void BlockAction()        //格挡判定
+    {
+        if (isHang == true || isAttack == true || isDodge == true || isDown==true  || isGround==false)
+        {
+            return;
+        }
+        bool b = Input.GetButton("Block");
+        //if (isBlock) Debug.DrawLine(transform.position,leftHandPoint.transform.position, Color.black, BOUNCETIMER);
+        if (isBlock == false && b==true && canBlock==true) //新的格挡
+        {
+            isBlock = true;
+            isBounce = true;
+            bounceTimer = BOUNCETIMER;
+            //Debug.DrawLine(transform.position, rightHandPoint.transform.position, Color.yellow, BOUNCETIMER);
+        }
+        else if (isBlock ==true && b == false)             //不再格挡
+        {
+            isBlock = false;
+            blockCDTimer = BLOCKCD;
+            canBlock = false;
+        }
+    } 
+
     void HorizontalAction() //左右移动
     {
         if (isAttack==true || isDodge==true)
         {
             return;
         }
-        if (isHang)
+        if (isHang)  //悬挂时改变刚体状态，锁定位置和旋转
         {
             //transform.position = hangPosition;
             rb.constraints = RigidbodyConstraints2D.FreezePosition|RigidbodyConstraints2D.FreezeRotation;
         }
-        else
+        else         //改变方向
         {
             float h = Input.GetAxis("Horizontal");
-            if (h > 0)                  //向右运动
+            if (isBlock == false)  //格挡时朝向不变
             {
-                forward = true;
-                //Debug.Log("forward 1");
+                if (h > 0)                  //向右运动
+                {
+                    forward = true;
+                    //Debug.Log("forward 1");
+                }
+                else if (h < 0)               //向左运动
+                {
+                    forward = false;
+                    //Debug.Log("forward 0");  
+                }
             }
-            else if (h<0)               //向左运动
-            {
-                forward = false;
-                //Debug.Log("forward 0");  
-            }
-            transform.position += new Vector3(h * horizontalSpeed, 0, 0);
+            float speed;
+            speed = h * horizontalSpeed *(1- System.Convert.ToInt32(isBlock) * blockSpeedDebuff);
+            //else speed = h * horizontalSpeed - System.Convert.ToInt32(isBlock) * blockSpeedDebuff;
+            transform.position += new Vector3(speed, 0, 0);
         }
     }
 
     void HangCheck()     //悬挂判定
     {
+        //头部向左悬挂判定
         RaycastHit2D handHitInfo,headHitInfo;
         handHitInfo = Physics2D.Raycast(transform.position, Vector2.left, hangDistance, ground);
         headHitInfo = Physics2D.Raycast(headPoint.transform.position, Vector2.left, hangDistance, ground);
-        if (headHitInfo==false && handHitInfo!=false && handHitInfo.collider.tag == "ground")
+        if (headHitInfo==false && handHitInfo!=false && handHitInfo.collider.tag == "ground")  
         {
             leftHang = true;
         }
@@ -245,8 +359,11 @@ public class PlayerController : MonoBehaviour
         {
             leftHang = false;
         }
+
+        //头部向有悬挂判定
         handHitInfo = Physics2D.Raycast(transform.position, Vector2.right, hangDistance, ground);
         headHitInfo = Physics2D.Raycast(headPoint.transform.position, Vector2.right, hangDistance, ground);
+
         if (headHitInfo == false && handHitInfo != false && handHitInfo.collider.tag == "ground")
         {
             rightHang = true;
