@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using RangeAttackData;
 
 public class PlayerController : MonoBehaviour
 {
@@ -10,6 +11,8 @@ public class PlayerController : MonoBehaviour
 
     public LayerMask ground;            //地面层
 
+    public RangeAttackData rad;
+
     //身体位置
     public GameObject headPoint;        //头部位置点
     public GameObject leftHandPoint;    //左手位置点
@@ -17,7 +20,11 @@ public class PlayerController : MonoBehaviour
     //public GameObject leftHandAttack;
     //public GameObject rightHandAttack;
 
-    
+    //数值状态相关参数
+    public float MAXHEALTH;
+    public float MAXMAGICPOINT;
+    private float health;
+    private float magicPoint;
     
     //跳跃相关参数
     public int JUMPCOUNT;               //连跳次数
@@ -37,7 +44,7 @@ public class PlayerController : MonoBehaviour
     //悬挂相关参数
     public float hangDistance;              //左右悬挂判定距离
    
-    private Vector2 hangPosition;
+    private Vector2 hangPosition;           //悬挂位置
 
     //状态相关参数 
     private bool isHang,leftHang,rightHang; //是否处于悬挂状态
@@ -49,6 +56,7 @@ public class PlayerController : MonoBehaviour
     private bool isBlock;                   //是否在格挡
     private bool canBlock;                  //此时能否举盾 
     private bool isBounce;                  //是否处于弹反
+    private bool isMagic;                   //是否处于施法状态
     private bool canShoot;                  //此时能否射击
 
     //闪避相关参数
@@ -68,10 +76,15 @@ public class PlayerController : MonoBehaviour
 
     //投掷相关参数
     public GameObject stone;                     //石头物体
-    public float stoneSpeed;                //石头初速度
-    public float SHOOTCD;                   //射击冷却时间
-    private GameObject newShoot;            //创建的石块
-    private float shootCDTimer;             //射击冷却时间计时器
+    public float stoneSpeed;                     //石头初速度
+    public GameObject knife;                     //小刀（施术）物体
+    public float knifeSpeed;                     //小刀（施术）初速度
+    public float SHOOTCD;                        //射击冷却时间
+
+    private GameObject rangeAttack;              //远程攻击物体
+    private float rangeAttackSpeed;              //远程攻击初速度
+    private GameObject newShoot;                 //创建的新射击
+    private float shootCDTimer;                  //射击冷却时间计时器
 
     //攻击相关参数
     public GameObject normalAttackTrigger;  //普通攻击判定范围
@@ -92,6 +105,7 @@ public class PlayerController : MonoBehaviour
         isAttack = false;
         isDodge = false;
         isInvincible = false;
+        isMagic = false;
         canBlock = true;
         canShoot = true;
     }
@@ -108,16 +122,17 @@ public class PlayerController : MonoBehaviour
     }
     void FixedUpdate()
     {
-        CDUpdate();
-        HangCheck();
-        GroundCheck();
-        DodgeAction();
-        AttackAction();
-        ShootAction();
-        BlockAction();
-        HorizontalAction();
-        JumpAction();
-        FallAction();
+        CDUpdate();              //冷却更新
+        HangCheck();             //悬挂判定
+        GroundCheck();           //落地判定
+        MagicCheck();            //施法判定
+        DodgeAction();           //执行闪避
+        AttackAction();          //执行攻击
+        ShootAction();           //执行射击
+        BlockAction();           //执行格挡
+        HorizontalAction();      //水平移动
+        JumpAction();            //跳跃移动
+        FallAction();            //落下移动
     }
     
     void CDUpdate()     //冷却更新
@@ -180,6 +195,16 @@ public class PlayerController : MonoBehaviour
             }
         }
     } 
+    
+    void MagicCheck() //检查是否在施法
+    {
+        if (Input.GetButton("Magic") == true)
+        {
+            Debug.Log("施法中");
+            isMagic = true;
+        }
+        else isMagic = false;
+    }
 
     void DodgeMove(int dodgeForward) //翻滚移动方向
     {
@@ -264,22 +289,33 @@ public class PlayerController : MonoBehaviour
         bool s = Input.GetButton("Shoot");
         if (s==true && canShoot == true)
         {
-            Debug.Log("射击石块");
-            if (forward == true)
+            Debug.Log("射击");
+            if (isMagic == true)
             {
-                Rigidbody2D stoneRb;
-                
-                newShoot = Instantiate(stone, rightHandPoint.transform.position, Quaternion.identity);
-                stoneRb = newShoot.GetComponent<Rigidbody2D>();
-                stoneRb.velocity=Vector2.right*stoneSpeed;
+                rangeAttack = knife;
+                rangeAttackSpeed = knifeSpeed;
             }
             else
             {
-                Rigidbody2D stoneRb;
+                rangeAttack = stone;
+                rangeAttackSpeed = stoneSpeed;
+            }
+            
+            if (forward == true)
+            {
+                Rigidbody2D rangAttackRb;
                 
-                newShoot = Instantiate(stone, leftHandPoint.transform.position, Quaternion.identity);
-                stoneRb = newShoot.GetComponent<Rigidbody2D>();
-                stoneRb.velocity=Vector2.left*stoneSpeed;
+                newShoot = Instantiate(rangeAttack, rightHandPoint.transform.position, Quaternion.identity);
+                rangAttackRb = newShoot.GetComponent<Rigidbody2D>();
+                rangAttackRb.velocity=Vector2.right*rangeAttackSpeed;
+            }
+            else
+            {
+                Rigidbody2D rangeAttackRb;
+                
+                newShoot = Instantiate(rangeAttack, leftHandPoint.transform.position, Quaternion.identity);
+                rangeAttackRb = newShoot.GetComponent<Rigidbody2D>();
+                rangeAttackRb.velocity=Vector2.left*rangeAttackSpeed;
                 
             }
             Destroy(newShoot, 5);
