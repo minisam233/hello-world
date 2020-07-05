@@ -1,7 +1,6 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using RangeAttackData;
 
 public class PlayerController : MonoBehaviour
 {
@@ -11,14 +10,13 @@ public class PlayerController : MonoBehaviour
 
     public LayerMask ground;            //地面层
 
-    public RangeAttackData rad;
+    public RangeAttackData RAD;
+    public MeleeAttackData MAD;
 
     //身体位置
     public GameObject headPoint;        //头部位置点
     public GameObject leftHandPoint;    //左手位置点
     public GameObject rightHandPoint;   //右手位置点
-    //public GameObject leftHandAttack;
-    //public GameObject rightHandAttack;
 
     //数值状态相关参数
     public float MAXHEALTH;
@@ -75,31 +73,38 @@ public class PlayerController : MonoBehaviour
     private float bounceTimer;                //弹反时间计时器
 
     //投掷相关参数
-    public GameObject stone;                     //石头物体
-    public float stoneSpeed;                     //石头初速度
-    public GameObject knife;                     //小刀（施术）物体
-    public float knifeSpeed;                     //小刀（施术）初速度
-    public float SHOOTCD;                        //射击冷却时间
-
+    private GameObject normalRangeAttack;        //普通远程攻击
+    public int normalRangeAttackNum;             //普通远程攻击序列号
+    private GameObject magicRangeAttack;         //施法远程攻击
+    public int magicRangeAttackNum;              //施法远程攻击序列号
     private GameObject rangeAttack;              //远程攻击物体
-    private float rangeAttackSpeed;              //远程攻击初速度
+    private RangeAttackWeapon rangeAttackData;   //远程攻击参数
+    //private float rangeAttackSpeed;              //远程攻击初速度
+    //private float rangeAttackCD;                 //远程攻击冷却时间
     private GameObject newShoot;                 //创建的新射击
     private float shootCDTimer;                  //射击冷却时间计时器
 
     //攻击相关参数
-    public GameObject normalAttackTrigger;  //普通攻击判定范围
-    public float triggerTime;               //判定时长
-    public float NORMALATTACKCD;            //普通攻击冷却时长
-    public float NORMALATTACKSTATUSTIMER;   //普通攻击状态重置时长常数
-    public int NORMALATTACKSTATUS;          //普通攻击状态常熟
-    private int normalAttackStatus;         //普通攻击状态
-    private float normalAttackStatusTimer;  //普通攻击状态时长
-    private float normalAttackCD=0;         //剩余攻击冷却时长
-    private GameObject newAttack;           //创建的普通攻击判定
+
+    public int normalMeleeAttackNum;               //普通近战攻击序列号
+    public int magicMeleeAttackNum;                //施法近战攻击序列号
+    private GameObject normalMeleeAttack;          //普通近战攻击
+    private GameObject magicMeleeAttack;           //施法近战攻击
+    private int lastAttack;                        //记录上一次是什么攻击 0为未攻击 1为普通攻击 2为施法攻击
+    private GameObject meleeAttack;                //近战攻击
+    private MeleeAttackWeapon meleeAttackData;     //近战攻击参数
+    private float meleeAttackCD;                   //近战攻击冷却计时器
+    private float meleeAttackStatusTimer;          //近战攻击状态重置计时器
+    private int meleeAttackStatus;                 //当前近战攻击状态
+    private GameObject newAttack;                  //创建的普通攻击判定
+
+    
 
     void Start()
     {
         rb = GetComponent<Rigidbody2D>();
+        RAD = GetComponent<RangeAttackData>();
+        MAD = GetComponent<MeleeAttackData>();
         isHang = false;
         isDown = false;
         isAttack = false;
@@ -108,6 +113,13 @@ public class PlayerController : MonoBehaviour
         isMagic = false;
         canBlock = true;
         canShoot = true;
+        lastAttack = 0;
+        //远程攻击武器初始化
+        normalRangeAttack = RAD.rangeAttackWeapons[normalRangeAttackNum];
+        magicRangeAttack = RAD.rangeAttackWeapons[magicRangeAttackNum];
+        //近战攻击武器初始化
+        normalMeleeAttack = MAD.meleeAttackWeapons[normalMeleeAttackNum];
+        magicMeleeAttack = MAD.meleeAttackWeapons[magicMeleeAttackNum];
     }
 
     // Update is called once per frame
@@ -137,21 +149,23 @@ public class PlayerController : MonoBehaviour
     
     void CDUpdate()     //冷却更新
     {
-        if (normalAttackCD > 0)
+        if (meleeAttackCD > 0)
         {
-            normalAttackCD -= Time.deltaTime;
-            if (normalAttackCD <= 0)
+            meleeAttackCD -= Time.deltaTime;
+            if (meleeAttackCD <= 0)
             {
                 isAttack = false;
-                normalAttackCD = 0;
+                meleeAttackCD = 0;
             }
         }
-        if (normalAttackStatusTimer > 0)
+        if (meleeAttackStatusTimer > 0)
         {
-            normalAttackStatusTimer -= Time.deltaTime;
-            if (normalAttackStatusTimer <= 0)
+            meleeAttackStatusTimer -= Time.deltaTime;
+            if (meleeAttackStatusTimer <= 0)
             {
-                normalAttackStatus = 0;
+                meleeAttackStatus = 0;
+                lastAttack = 0;
+                meleeAttackStatusTimer = 0;
             }
         }
         if (dodgeInvincibleTimer > 0)
@@ -160,6 +174,7 @@ public class PlayerController : MonoBehaviour
             if (dodgeInvincibleTimer <= 0)
             {
                 isInvincible = false;
+                dodgeInvincibleTimer = 0;
             }
         }
         if (dodgeTimer > 0)
@@ -184,6 +199,7 @@ public class PlayerController : MonoBehaviour
             if (blockCDTimer <= 0)
             {
                 canBlock = true;
+                blockCDTimer = 0;
             }
         }
         if (shootCDTimer > 0)
@@ -192,6 +208,7 @@ public class PlayerController : MonoBehaviour
             if (shootCDTimer <= 0)
             {
                 canShoot = true;
+                shootCDTimer = 0;
             }
         }
     } 
@@ -200,7 +217,7 @@ public class PlayerController : MonoBehaviour
     {
         if (Input.GetButton("Magic") == true)
         {
-            Debug.Log("施法中");
+            //Debug.Log("施法中");
             isMagic = true;
         }
         else isMagic = false;
@@ -249,32 +266,46 @@ public class PlayerController : MonoBehaviour
         //rightHandAttack.transform.position = rightHandPoint.transform.position;
         if (isHang == true || isDodge==true || isDown==true) return;
         //新的攻击
-        if (Input.GetButton("Attack") && normalAttackCD == 0)      
+        if (Input.GetButton("Attack") && meleeAttackCD == 0)      
         {
             if (isGround)
             {
                 isAttack = true;
+                if (isMagic == true)
+                {
+                    if (lastAttack == 1) meleeAttackStatus = 0;
+                    lastAttack = 2;
+                    meleeAttack = magicMeleeAttack;
+                    meleeAttackData = magicMeleeAttack.GetComponent<MeleeAttackWeapon>();
+                }
+                else
+                {
+                    if (lastAttack == 2) meleeAttackStatus = 0;
+                    lastAttack = 1;
+                    meleeAttack = normalMeleeAttack;
+                    meleeAttackData = normalMeleeAttack.GetComponent<MeleeAttackWeapon>();
+                }
                 if (forward == true)
                 {
-                    newAttack = (GameObject)Instantiate(normalAttackTrigger, rightHandPoint.transform.position, Quaternion.identity);
+                    newAttack = (GameObject)Instantiate(meleeAttack, rightHandPoint.transform.position, Quaternion.identity);
 
                 }
                 else
                 {
-                    newAttack = (GameObject)Instantiate(normalAttackTrigger,leftHandPoint.transform.position, Quaternion.identity);
+                    newAttack = (GameObject)Instantiate(meleeAttack,leftHandPoint.transform.position, Quaternion.identity);
                 }
-                //Debug.Log(normalAttackStatus);
-                //if (normalAttackStatus==0)
-                //    Debug.DrawLine(transform.position, leftHandPoint.transform.position, Color.blue, NORMALATTACKSTATUSTIMER);
-                //else if (normalAttackStatus==1)
-                //    Debug.DrawLine(transform.position, leftHandPoint.transform.position, Color.red, NORMALATTACKSTATUSTIMER);
-                //else
-                //    Debug.DrawLine(transform.position, leftHandPoint.transform.position, Color.green, NORMALATTACKSTATUSTIMER);
+                Debug.Log("攻击方式："+isMagic+"攻击状态："+meleeAttackStatus);
+                if (meleeAttackStatus == 0)
+                    Debug.DrawLine(transform.position, leftHandPoint.transform.position, Color.blue, meleeAttackStatus);
+                else if (meleeAttackStatus == 1)
+                    Debug.DrawLine(transform.position, leftHandPoint.transform.position, Color.red, meleeAttackStatus);
+                else
+                    Debug.DrawLine(transform.position, leftHandPoint.transform.position, Color.green, meleeAttackStatus);
                 isBlock = false;
-                normalAttackStatus = (normalAttackStatus + 1) % NORMALATTACKSTATUS;
-                normalAttackStatusTimer = NORMALATTACKSTATUSTIMER;
-                Destroy(newAttack, triggerTime);
-                normalAttackCD = NORMALATTACKCD;
+                meleeAttackStatus = (meleeAttackStatus + 1) % meleeAttackData.meleeAttackStatusNum;
+                meleeAttackStatusTimer = meleeAttackData.meleeAttackStatusCD;
+                Destroy(newAttack, meleeAttackData.meleeAttackTriggerTime);
+                meleeAttackCD = meleeAttackData.meleeAttackCD;
             }
 
         }
@@ -289,16 +320,16 @@ public class PlayerController : MonoBehaviour
         bool s = Input.GetButton("Shoot");
         if (s==true && canShoot == true)
         {
-            Debug.Log("射击");
+            //Debug.Log("射击");
             if (isMagic == true)
             {
-                rangeAttack = knife;
-                rangeAttackSpeed = knifeSpeed;
+                rangeAttack = magicRangeAttack;
+                rangeAttackData = magicRangeAttack.GetComponent<RangeAttackWeapon>();
             }
             else
             {
-                rangeAttack = stone;
-                rangeAttackSpeed = stoneSpeed;
+                rangeAttack = normalRangeAttack;
+                rangeAttackData = normalRangeAttack.GetComponent<RangeAttackWeapon>();
             }
             
             if (forward == true)
@@ -307,20 +338,21 @@ public class PlayerController : MonoBehaviour
                 
                 newShoot = Instantiate(rangeAttack, rightHandPoint.transform.position, Quaternion.identity);
                 rangAttackRb = newShoot.GetComponent<Rigidbody2D>();
-                rangAttackRb.velocity=Vector2.right*rangeAttackSpeed;
+                rangAttackRb.velocity=Vector2.right*rangeAttackData.rangeAttackSpeed;
             }
             else
             {
                 Rigidbody2D rangeAttackRb;
-                
+                //Debug.Log("名称:" + rangeAttack.GetComponent<RangeAttackWeapon>().weaponName);
+                //Debug.Log("速度:" + rangeAttackSpeed);
                 newShoot = Instantiate(rangeAttack, leftHandPoint.transform.position, Quaternion.identity);
                 rangeAttackRb = newShoot.GetComponent<Rigidbody2D>();
-                rangeAttackRb.velocity=Vector2.left*rangeAttackSpeed;
+                rangeAttackRb.velocity=Vector2.left*rangeAttackData.rangeAttackSpeed;
                 
             }
             Destroy(newShoot, 5);
             canShoot = false;
-            shootCDTimer = SHOOTCD;
+            shootCDTimer = rangeAttackData.rangeAttackCD;
         }
     }
 
